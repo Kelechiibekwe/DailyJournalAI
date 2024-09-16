@@ -14,7 +14,7 @@ from config import Config
 def send_journal_email(user_id):
     # Get user email and generate a prompt
     sender_email = Config.EMAIL_ADDRESS
-    receiver_email = Config.EMAIL_ADDRESS  # Replace with user's email
+    receiver_email = Config.EMAIL_ADDRESS
     password = Config.EMAIL_PASSWORD
 
     # Generate the journal prompt
@@ -64,7 +64,7 @@ def send_journal_email(user_id):
 
 
 def check_for_reply(message_id):
-    default_email = Config.EMAIL_ADDRESS  # Replace with user's email
+    default_email = Config.EMAIL_ADDRESS
     password = Config.EMAIL_PASSWORD
     mail = imaplib.IMAP4_SSL("imap.gmail.com")
     mail.login(default_email, password)
