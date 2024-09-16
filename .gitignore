@@ -4,6 +4,8 @@ __pycache__/
 *.pyo
 *.pyd
 
+app.py.test
+
 # Flask secret keys and environment settings
 .env
 
