@@ -1,0 +1,93 @@
+# from flask import Flask, render_template
+# import smtplib, ssl
+# from email.mime.text import MIMEText
+# from email.mime.multipart import MIMEMultipart
+# from openai import OpenAI
+# from config import Config
+
+# client = OpenAI(api_key=Config.OPENAI_API_KEY)
+
+
+# app = Flask(__name__)
+
+# assistant = client.beta.assistants.create(
+#     name="Journal Prompt Generator",
+#     instructions="You are a friend that generates prompts based on journal entries.",
+#     model="gpt-4o"
+# )
+
+# def generate_prompt():
+#     thread = client.beta.threads.create()
+    
+#     client.beta.threads.messages.create(
+#         thread_id=thread.id,
+#         role="user",
+#         content=(
+#             "Generate a light-hearted journaling prompt that asks about my day in a fun, conversational way. "
+#             "It should feel like I'm chatting with a friend, making it easy for me to reflect on what happened today."
+#         )
+#     )
+    
+#     run = client.beta.threads.runs.create(
+#         thread_id=thread.id,
+#         assistant_id=assistant.id
+#     )
+    
+#     while run.status not in ["completed", "failed"]:
+#         run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+    
+#     if run.status == "failed":
+#         return "What's on your mind today?"
+    
+#     messages = client.beta.threads.messages.list(thread_id=thread.id)
+#     return messages.data[0].content[0].text.value
+
+
+# # Email sending function
+# def send_journal_email():
+#     sender_email = "kibekwe96@gmail.com"
+#     receiver_email = "kibekwe96@gmail.com"
+#     password = Config.EMAIL_PASSWORD
+
+#     message = MIMEMultipart("alternative")
+#     message["Subject"] = "Your Daily Journal Prompt"
+#     message["From"] = sender_email
+#     message["To"] = receiver_email
+
+#     prompt = generate_prompt()
+
+#     html = f"""\
+#     <html>
+#       <body>
+#         <p>Hi,<br>
+#            It's time to journal! Here's your prompt for today:<br>
+#            <b>"{prompt}"</b><br>
+#            Keep up the great habit!
+#         </p>
+#       </body>
+#     </html>
+#     """
+
+#     part = MIMEText(html, "html")
+#     message.attach(part)
+
+#     context = ssl.create_default_context()
+#     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+#         server.login(sender_email, password)
+#         server.sendmail(sender_email, receiver_email, message.as_string())
+
+
+# # Define a route for the home page
+# @app.route('/')
+# def home():
+#     return "Welcome to my Flask app!"
+
+# # Define the journal route that sends an email
+# @app.route('/journal')
+# def journal():
+#     prompt = generate_prompt()
+#     # send_journal_email()
+#     return f"Journal email sent with prompt: '{prompt}'.Check your inbox!"
+
+# if __name__ == '__main__':
+#     app.run(debug=True)

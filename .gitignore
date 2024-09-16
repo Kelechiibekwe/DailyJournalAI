@@ -1,0 +1,15 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Flask secret keys and environment settings
+.env
+
+# Migrations
+migrations/
+
+# Docker
+*.log
+docker-compose.override.yml
