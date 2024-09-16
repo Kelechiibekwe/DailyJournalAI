@@ -1,5 +1,7 @@
 import os
 from dotenv import load_dotenv
+import logging
+import logging.handlers
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -16,3 +18,23 @@ class Config:
     # Database Configuration
     SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Logging Configuration
+    @staticmethod
+    def setup_logging():
+        
+        """Sets up logging with daily log rotation."""
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG)
+
+        # Create logs folder if it doesn't exist
+        log_directory = os.path.join(basedir, 'logs')
+        if not os.path.exists(log_directory):
+            os.makedirs(log_directory)
+
+        # set TimedRotatingFileHandler for root
+        formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s %(message)s')
+        # use very short interval for this example, typical 'when' would be 'midnight' and no explicit interval
+        handler = logging.handlers.TimedRotatingFileHandler(os.path.join(log_directory, "JournalAI.log"), when="midnight", interval=1, backupCount=10)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)

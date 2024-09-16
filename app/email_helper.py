@@ -7,9 +7,11 @@ from email.utils import make_msgid
 import email
 from email.header import decode_header
 from app.models import db, Prompts, Responses, User_Prompt
-
+import logging
 
 from config import Config
+
+logger = logging.getLogger()
 
 def send_journal_email(user_id):
     # Get user email and generate a prompt
@@ -86,7 +88,7 @@ def check_for_reply(message_id):
                     for part in msg.walk():
                         if part.get_content_type() == "text/plain":
                             body = part.get_payload(decode=True).decode()
-                            print(f"Subject: {subject}\nBody: {body}")
+                            logging.info(f"Subject: {subject}\nBody: {body}")
 
                             # Save the response in the Responses table
                             user_prompt = User_Prompt.query.filter_by(message_id=message_id).first()
@@ -96,7 +98,7 @@ def check_for_reply(message_id):
                                 db.session.commit()
                 else:
                     body = msg.get_payload(decode=True).decode()
-                    print(f"Subject: {subject}\nBody: {body}")
+                    logging.info(f"Subject: {subject}\nBody: {body}")
 
                     # Save the response in the Responses table
                     user_prompt = User_Prompt.query.filter_by(message_id=message_id).first()

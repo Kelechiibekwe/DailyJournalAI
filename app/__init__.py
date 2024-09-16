@@ -20,6 +20,9 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # Setup logging
+    config_class.setup_logging()
+
     # Database initialization
     db.init_app(app)
 
