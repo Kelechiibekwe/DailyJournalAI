@@ -1,6 +1,5 @@
 # app/routes.py
 from flask import Flask, jsonify
-from app.openai_helper import generate_prompt
 from app.email_helper import send_journal_email, check_for_reply
 from app.models import db, Prompts, Responses, User_Prompt
 

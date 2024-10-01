@@ -22,8 +22,7 @@ class Config:
     # Logging Configuration
     @staticmethod
     def setup_logging():
-        
-        """Sets up logging with daily log rotation."""
+        """Sets up logging with daily log rotation and UTF-8 encoding."""
         logger = logging.getLogger()
         logger.setLevel(logging.DEBUG)
 
@@ -32,9 +31,19 @@ class Config:
         if not os.path.exists(log_directory):
             os.makedirs(log_directory)
 
-        # set TimedRotatingFileHandler for root
+        # Set TimedRotatingFileHandler with UTF-8 encoding
         formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s %(message)s')
-        # use very short interval for this example, typical 'when' would be 'midnight' and no explicit interval
-        handler = logging.handlers.TimedRotatingFileHandler(os.path.join(log_directory, "JournalAI.log"), when="midnight", interval=1, backupCount=10)
+
+        # TimedRotatingFileHandler for rotating the logs daily at midnight, keeping 10 backups
+        handler = logging.handlers.TimedRotatingFileHandler(
+            os.path.join(log_directory, "JournalAI.log"),
+            when="midnight",
+            interval=1,
+            backupCount=10,
+            encoding='utf-8'  # Ensure logs are written with utf-8 encoding
+        )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
+
+        # Log the initialization
+        logger.info("Logging setup complete with daily rotation and UTF-8 encoding.")

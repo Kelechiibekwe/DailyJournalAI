@@ -1,4 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
+import sqlalchemy.dialects.postgresql as pg
 
 # Initialize SQLAlchemy
 db = SQLAlchemy()
@@ -7,7 +8,8 @@ db = SQLAlchemy()
 class Prompts(db.Model):
     prompt_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, nullable=False)
-    prompt_text = db.Column(db.String(255), nullable=False)
+    prompt_text = db.Column(db.Text, nullable=False)
+    embedding_vector = db.Column(pg.ARRAY(db.Float), nullable=True)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
 # Define the Responses model
@@ -16,6 +18,7 @@ class Responses(db.Model):
     user_id = db.Column(db.Integer, nullable=False)
     prompt_id = db.Column(db.Integer, nullable=False)
     response_text = db.Column(db.Text, nullable=False)
+    embedding_vector = db.Column(pg.ARRAY(db.Float), nullable=True)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
 # Define the User_Prompt model

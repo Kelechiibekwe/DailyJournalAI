@@ -1,13 +1,14 @@
 import smtplib, ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from app.openai_helper import generate_prompt
+from app.openai_helper import generate_prompt_with_hybrid_memory
 import imaplib
 from email.utils import make_msgid
 import email
 from email.header import decode_header
 from app.models import db, Prompts, Responses, User_Prompt
 import logging
+import openai
 
 from config import Config
 
@@ -19,8 +20,12 @@ def send_journal_email(user_id):
     receiver_email = Config.EMAIL_ADDRESS
     password = Config.EMAIL_PASSWORD
 
-    # Generate the journal prompt
-    prompt_text = generate_prompt()
+    # Use the last journal entry (or a default if none exists) as query_text
+    last_response = db.session.query(Responses.response_text).filter_by(user_id=user_id).order_by(Responses.created_at.desc()).first()
+    query_text = last_response[0] if last_response else "How was your day?"
+
+    # Generate the journal prompt using hybrid memory
+    prompt_text = generate_prompt_with_hybrid_memory(user_id, query_text)
 
     # Create the email message
     message = MIMEMultipart("alternative")
@@ -51,8 +56,14 @@ def send_journal_email(user_id):
         server.login(sender_email, password)
         server.sendmail(sender_email, receiver_email, message.as_string())
 
-    # Store the prompt in the database
-    new_prompt = Prompts(user_id=user_id, prompt_text=prompt_text)
+    # Generate embedding for the email body using OpenAI API
+    embedding = openai.Embedding.create(
+        input=[prompt_text],
+        model="text-embedding-ada-002"
+    )['data'][0]['embedding']
+
+    # Store the generated prompt in the database
+    new_prompt = Prompts(user_id=user_id, prompt_text=prompt_text, embedding_vector=embedding)
     db.session.add(new_prompt)
     db.session.commit()
 
@@ -64,47 +75,74 @@ def send_journal_email(user_id):
     return msg_id
 
 
-
 def check_for_reply(message_id):
     default_email = Config.EMAIL_ADDRESS
     password = Config.EMAIL_PASSWORD
-    mail = imaplib.IMAP4_SSL("imap.gmail.com")
-    mail.login(default_email, password)
-    mail.select("inbox")
+    try:
+            # Connect to the email server and login
+            mail = imaplib.IMAP4_SSL("imap.gmail.com")
+            mail.login(default_email, password)
+            mail.select("inbox")
 
-    # Search for emails with 'In-Reply-To' matching the original Message-ID
-    status, messages = mail.search(None, f'HEADER In-Reply-To "{message_id}"')
+            # Search for emails with 'In-Reply-To' matching the original Message-ID
+            status, messages = mail.search(None, f'HEADER In-Reply-To "{message_id}"')
 
-    for msg_id in messages[0].split():
-        status, msg_data = mail.fetch(msg_id, "(RFC822)")
-        for response_part in msg_data:
-            if isinstance(response_part, tuple):
-                msg = email.message_from_bytes(response_part[1])
-                subject, encoding = decode_header(msg["Subject"])[0]
-                if isinstance(subject, bytes):
-                    subject = subject.decode(encoding if encoding else "utf-8")
+            if status != "OK" or not messages[0]:
+                logger.warning(f"No messages found with In-Reply-To: {message_id}")
+                return
 
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        if part.get_content_type() == "text/plain":
-                            body = part.get_payload(decode=True).decode()
-                            logging.info(f"Subject: {subject}\nBody: {body}")
+            for msg_id in messages[0].split():
+                status, msg_data = mail.fetch(msg_id, "(RFC822)")
 
-                            # Save the response in the Responses table
-                            user_prompt = User_Prompt.query.filter_by(message_id=message_id).first()
-                            if user_prompt:
-                                response = Responses(user_id=user_prompt.user_id, prompt_id=user_prompt.prompt_id, response_text=body)
-                                db.session.add(response)
-                                db.session.commit()
-                else:
-                    body = msg.get_payload(decode=True).decode()
-                    logging.info(f"Subject: {subject}\nBody: {body}")
+                if status != "OK":
+                    logger.error(f"Failed to fetch email with msg_id: {msg_id}")
+                    continue
 
-                    # Save the response in the Responses table
-                    user_prompt = User_Prompt.query.filter_by(message_id=message_id).first()
-                    if user_prompt:
-                        response = Responses(user_id=user_prompt.user_id, prompt_id=user_prompt.prompt_id, response_text=body)
-                        db.session.add(response)
-                        db.session.commit()
+                for response_part in msg_data:
+                    if isinstance(response_part, tuple):
+                        msg = email.message_from_bytes(response_part[1])
+                        subject, encoding = decode_header(msg["Subject"])[0]
 
-    mail.logout()
+                        if isinstance(subject, bytes):
+                            subject = subject.decode(encoding if encoding else "utf-8")
+
+                        # Extract the body of the email
+                        if msg.is_multipart():
+                            body = None
+                            for part in msg.walk():
+                                if part.get_content_type() == "text/plain":
+                                    body = part.get_payload(decode=True).decode()
+                                elif part.get_content_type() == "text/html" and body is None:
+                                    # Fallback to HTML if no plain text found
+                                    body = part.get_payload(decode=True).decode()
+                        else:
+                            body = msg.get_payload(decode=True).decode()
+
+                        # Log the email subject and body
+                        logger.info(f"Subject: {subject}\nBody: {body}")
+
+                        # Save the response in the Responses table
+                        user_prompt = User_Prompt.query.filter_by(message_id=message_id).first()
+                        if user_prompt and body:
+                            # Generate embedding for the email body using OpenAI API
+                            embedding = openai.Embedding.create(
+                                input=[body],
+                                model="text-embedding-ada-002"
+                            )['data'][0]['embedding']
+
+                            # Save the response with the embedding
+                            response = Responses(
+                                user_id=user_prompt.user_id, 
+                                prompt_id=user_prompt.prompt_id, 
+                                response_text=body,
+                                embedding_vector=embedding
+                            )
+                            db.session.add(response)
+                            db.session.commit()
+                            logger.info(f"Saved response for user_id: {user_prompt.user_id}, prompt_id: {user_prompt.prompt_id}")
+
+    except Exception as e:
+        logger.error(f"Error checking for reply: {e}")
+    finally:
+        # Ensure the connection to the mail server is closed
+        mail.logout()
