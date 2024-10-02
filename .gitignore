@@ -10,7 +10,7 @@ app.py.test
 .env
 
 # Migrations
-migrations/
+# migrations/
 
 # Docker
 *.log
