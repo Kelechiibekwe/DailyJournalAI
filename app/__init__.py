@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import Config
 from app.routes import init_routes 
 from flask_migrate import Migrate
-from app.models import db
+from app.models.models import db
 
 # Load environment variables from .env
 load_dotenv()

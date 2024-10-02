@@ -1,18 +1,21 @@
 import smtplib, ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from app.openai_helper import generate_prompt_with_hybrid_memory
+from app.openai_helper import generate_prompt_with_hybrid_memory, update_short_term_memory, get_short_term_memory 
 import imaplib
 from email.utils import make_msgid
 import email
 from email.header import decode_header
-from app.models import db, Prompts, Responses, User_Prompt
+from app.models.models import db, Prompts, Responses, User_Prompt
 import logging
-import openai
+from openai import OpenAI
+
+client = OpenAI()
 
 from config import Config
 
 logger = logging.getLogger()
+embedding_model = "text-embedding-3-small"
 
 def send_journal_email(user_id):
     # Get user email and generate a prompt
@@ -57,10 +60,8 @@ def send_journal_email(user_id):
         server.sendmail(sender_email, receiver_email, message.as_string())
 
     # Generate embedding for the email body using OpenAI API
-    embedding = openai.Embedding.create(
-        input=[prompt_text],
-        model="text-embedding-ada-002"
-    )['data'][0]['embedding']
+    embedding = client.embeddings.create(input=[prompt_text],
+    model=embedding_model).data[0].embedding
 
     # Store the generated prompt in the database
     new_prompt = Prompts(user_id=user_id, prompt_text=prompt_text, embedding_vector=embedding)
@@ -72,12 +73,16 @@ def send_journal_email(user_id):
     db.session.add(user_prompt)
     db.session.commit()
 
+    # Update short-term memory with the new prompt
+    update_short_term_memory(user_id, {"prompt": prompt_text, "message_id": msg_id})
+
     return msg_id
 
 
 def check_for_reply(message_id):
     default_email = Config.EMAIL_ADDRESS
     password = Config.EMAIL_PASSWORD
+    has_reply = False
     try:
             # Connect to the email server and login
             mail = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -124,11 +129,10 @@ def check_for_reply(message_id):
                         # Save the response in the Responses table
                         user_prompt = User_Prompt.query.filter_by(message_id=message_id).first()
                         if user_prompt and body:
+                            has_reply = True
                             # Generate embedding for the email body using OpenAI API
-                            embedding = openai.Embedding.create(
-                                input=[body],
-                                model="text-embedding-ada-002"
-                            )['data'][0]['embedding']
+                            embedding = client.embeddings.create(input=[body],
+                            model=embedding_model).data[0].embedding
 
                             # Save the response with the embedding
                             response = Responses(
@@ -141,6 +145,9 @@ def check_for_reply(message_id):
                             db.session.commit()
                             logger.info(f"Saved response for user_id: {user_prompt.user_id}, prompt_id: {user_prompt.prompt_id}")
 
+                            # Update short-term memory with the response
+                            update_short_term_memory(user_prompt.user_id, {"response": body, "message_id": message_id})
+            return has_reply  
     except Exception as e:
         logger.error(f"Error checking for reply: {e}")
     finally:
