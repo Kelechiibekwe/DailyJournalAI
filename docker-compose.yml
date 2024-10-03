@@ -1,6 +1,9 @@
 services:
   postgres:
     container_name: flask_postgres
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: postgres
     environment:
       POSTGRES_USER: postgres
