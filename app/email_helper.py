@@ -44,7 +44,7 @@ def send_journal_email(user_id):
       <body>
         <p>Hi,<br>
            It's time to journal! Here's your prompt for today:<br>
-           <b>"{prompt_text}"</b><br>
+           "{prompt_text}"<br>
            Keep up the great habit!
         </p>
       </body>

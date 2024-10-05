@@ -26,12 +26,10 @@ class Config:
         logger = logging.getLogger()
         logger.setLevel(logging.DEBUG)
 
-        # Create logs folder if it doesn't exist
         log_directory = os.path.join(basedir, 'logs')
         if not os.path.exists(log_directory):
             os.makedirs(log_directory)
 
-        # Set TimedRotatingFileHandler with UTF-8 encoding
         formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s %(message)s')
 
         # TimedRotatingFileHandler for rotating the logs daily at midnight, keeping 10 backups

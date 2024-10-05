@@ -1,5 +1,6 @@
 # from openai import OpenAI
 from openai import OpenAI
+from sqlalchemy import text
 
 client = OpenAI()
 from config import Config
@@ -47,40 +48,34 @@ def store_journal_embedding(user_id, journal_entry):
     db.session.add(new_prompt)
     db.session.commit()
 
-# Function to retrieve relevant past journal entries using embeddings for both prompts and responses
+
 def get_relevant_long_term_entries(user_id, query_text):
     # Generate embedding for the query
     query_embedding = client.embeddings.create(input=[query_text], model=embedding_model).data[0].embedding
 
-    # Fetch past prompts and their associated responses from the database
-    past_entries = db.session.query(Prompts, Responses).filter(Prompts.user_id == user_id, Prompts.prompt_id == Responses.prompt_id).all()
+    # Convert the query embedding into a PostgreSQL array format for SQL query
+    query_embedding_sql = "ARRAY[" + ",".join(map(str, query_embedding)) + "]"
 
-    similarities = []
+    # Define the SQL query to calculate cosine similarity using pgvector
+    query = text(f"""
+        WITH query AS (
+            SELECT {query_embedding_sql}::vector(1536) AS query_embedding
+        )
+        SELECT 
+            r.response_text,
+            (1 - (r.embedding_vector <-> query.query_embedding)) AS response_similarity
+        FROM responses r, query
+        WHERE r.user_id = :user_id
+        ORDER BY response_similarity DESC
+        LIMIT 3;
+    """)
 
-    for prompt, response in past_entries:
-        # Check if the embedding vectors are not None
-        if prompt.embedding_vector is None or response.embedding_vector is None:
-            continue  # Skip if embeddings are missing
+    # Execute the query
+    results = db.session.execute(query, {'user_id': user_id}).fetchall()
 
-        # Calculate cosine similarity for both prompt and response embeddings
-        prompt_vector = np.array(prompt.embedding_vector)
-        response_vector = np.array(response.embedding_vector)
-        query_vector = np.array(query_embedding)
-
-        # Cosine similarity between query and prompt
-        prompt_similarity = np.dot(query_vector, prompt_vector) / (np.linalg.norm(query_vector) * np.linalg.norm(prompt_vector))
-
-        # Cosine similarity between query and response
-        response_similarity = np.dot(query_vector, response_vector) / (np.linalg.norm(query_vector) * np.linalg.norm(response_vector))
-
-        # Combine prompt and response similarity (you could adjust this formula based on your needs)
-        combined_similarity = (prompt_similarity + response_similarity) / 2
-
-        similarities.append((prompt.prompt_text, response.response_text, combined_similarity))
-
-    # Sort by combined similarity and return the top relevant entries (top 3 results)
-    similarities.sort(key=lambda x: x[2], reverse=True)
-    relevant_entries = [{"prompt": entry[0], "response": entry[1], "similarity": entry[2]} for entry in similarities[:3]]
+    # Format the results as needed
+    # relevant_entries = [{"prompt": row[0], "response": row[1], "similarity": row[4]} for row in results]
+    relevant_entries = [{"response": row[0], "similarity": row[1]} for row in results]
 
     return relevant_entries
 
@@ -102,7 +97,7 @@ def generate_prompt_with_hybrid_memory(user_id, query_text):
         relevant_past_entries = ["(No relevant past entries found)"]
     else:
         # Convert relevant past entries (which may be a list of dicts) to strings
-        relevant_past_entries = [f"Prompt: {entry['prompt']}\nResponse: {entry['response']}" for entry in relevant_past_entries]
+        relevant_past_entries = [f"Response: {entry['response']}" for entry in relevant_past_entries]
 
     # Combine the recent context and relevant past entries
     combined_context = "Here’s what you’ve shared recently:\n" + "\n".join(recent_context) + "\n\n"
@@ -112,13 +107,26 @@ def generate_prompt_with_hybrid_memory(user_id, query_text):
     if combined_context.strip() == "":
         combined_context = "There is no previous context or entries available. You can start journaling now!"
 
+    prompt = (
+    "You are a journaling assistant that helps users generate light hearted personalized journal prompts. "
+    "You should use the previous entries as context to make the journal prompt more personalized. "
+    "You can sometimes generate journal prompts not solely based on previous entries. When there "
+    "are no previous entries or you are unsure, use any of the sample prompts below as inspiration "
+    "to generate a prompt. Just say the prompt, no need for any intro."
+    "Example of sample prompts to generate when you have no context or you want to generate a prompt without using previous entries: "
+    "1. What small thing could you do today to live more mindfully? "
+    "2. Describe a goal that once seemed unreachable, but you've since achieved. "
+    "3. Reflect on a quote that fills you with optimism. "
+    "4. What are some recurring thoughts you grapple with? "
+    "5. How do you maintain a positive outlook during tough times? "
+    "6. How do you spread positivity to others? "
+    "7. Reflect on a skill you worked hard to master."
+    )
+
     # Prepare the messages for the Chat Completion API
     messages = [
         {"role": "system", 
-            "content": 
-                "You are a journaling assistant that helps users generate personalized journal prompts based on their previous entries."
-                + " You can sometimes generate journal prompts not solely based on previous entries. When there are no previous entries "
-                + " or you are unsure, please say 'How's your day so far"},
+            "content":  prompt},
         {"role": "user", "content": f"Here’s my context:\n{combined_context}\nPlease generate a new personalized journal prompt for me."}
     ]
 
@@ -129,24 +137,3 @@ def generate_prompt_with_hybrid_memory(user_id, query_text):
     max_tokens=150)
 
     return prompt_response.choices[0].message.content.strip()
-
-
-# Function to store journal entries in PostgreSQL using SQLAlchemy
-# def store_journal_entry_in_db(user_id, journal_entry):
-#     vector = openai.Embedding.create(input=[journal_entry], model=embedding_model)['data'][0]['embedding']
-#     # Store the vector in PostgreSQL if needed or just store the entry text.
-#     new_prompt = Prompts(user_id=user_id, prompt_text=journal_entry)
-#     db.session.add(new_prompt)
-#     db.session.commit()
-
-# def process_user_journal(user_id, journal_entry):
-#     # Update short-term memory with the new journal entry
-#     update_short_term_memory(user_id, journal_entry)
-
-#     # Store the journal entry in long-term memory using embeddings
-#     store_journal_embedding(user_id, journal_entry)
-
-#     # Generate a new prompt based on both short-term and long-term context
-#     new_prompt = generate_prompt_with_hybrid_memory(user_id, journal_entry)
-
-#     return new_prompt

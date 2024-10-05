@@ -16,4 +16,5 @@ app.py.test
 
 # Docker
 *.log
+logs/
 docker-compose.override.yml
